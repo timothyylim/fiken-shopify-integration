@@ -1,0 +1,18 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Shop {
+  domain        String   @id // e.g. "my-shop.myshopify.com"
+  fikenToken    String   // Encrypted Access Token, we get after the user goes through the OAuth flow
+  refreshToken  String   // Encrypted Refresh Token
+  expiresAt     BigInt   // Timestamp (ms) when token expires
+  companySlug   String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
