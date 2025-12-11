@@ -1,0 +1,25 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "c5bb35435435ad23a3c17db12d4b5b2d"
+name = "Fiken Integration"
+application_url = "https://1e4e30986d16.ngrok-free.app"
+embedded = true
+
+[build]
+automatically_update_urls_on_dev = true
+
+[webhooks]
+api_version = "2026-01"
+
+  [[webhooks.subscriptions]]
+  topics = [ "orders/create" ]
+  uri = "/api/shopify/webhook"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_customers,read_orders"
+
+[auth]
+redirect_urls = [
+  "https://1e4e30986d16.ngrok-free.app/fiken/api/auth/callback"
+]

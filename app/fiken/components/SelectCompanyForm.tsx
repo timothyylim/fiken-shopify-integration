@@ -59,7 +59,7 @@ export default function SelectCompanyForm() {
 
     // No need to validate shop here, we already checked it exists above
     try {
-      const res = await fetch("/api/save-config", {
+      const res = await fetch("/fiken/api/save-config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -108,7 +108,7 @@ export default function SelectCompanyForm() {
       <div className="flex h-full w-full items-center justify-center p-6 font-sans">
         <div className="max-w-md w-full bg-white border border-slate-100 rounded-3xl p-12 text-center shadow-xl">
           <div className="w-20 h-20 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-8 border border-emerald-100">
-            <img src="/icons/check.svg" alt="Success" className="w-10 h-10" />
+            <img src="/fiken/check.svg" alt="Success" className="w-10 h-10" />
           </div>
           <h2 className="text-3xl font-bold text-slate-900 mb-3">Connected!</h2>
           <p className="text-slate-500 mb-8 text-lg leading-relaxed">
