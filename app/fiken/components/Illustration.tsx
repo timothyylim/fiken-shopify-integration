@@ -4,12 +4,14 @@ type IllustrationProps = {
   variant?: "full" | "sidebar";
 };
 
-export default function Illustration({ variant = "sidebar" }: IllustrationProps) {
+export default function Illustration({
+  variant = "sidebar",
+}: IllustrationProps) {
   const containerClasses = clsx(
-    "items-center justify-center p-12 relative overflow-hidden",
+    "justify-center p-12 relative overflow-hidden flex",
     {
-      "hidden lg:flex w-1/2 bg-slate-50": variant === "sidebar",
-      "min-h-screen flex w-full bg-white": variant === "full",
+      "hidden lg:flex w-1/2 bg-slate-50 items-center": variant === "sidebar",
+      "min-h-screen w-full bg-white items-start pt-60": variant === "full",
     }
   );
 

@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   const clientId = process.env.FIKEN_CLIENT_ID;
-  const redirectUri = process.env.FIKEN_REDIRECT_URI;
+  const baseUrl = process.env.BASE_URL;
+  const fikenRedirectPath = process.env.FIKEN_REDIRECT_URI;
   const baseUri = process.env.FIKEN_BASE_URL;
 
-  // 1. Get the shop from the incoming URL (Standard Shopify behavior)
+  // 1. Get the shop from the incoming URL
   const shop = request.nextUrl.searchParams.get("shop");
 
-  if (!clientId || !redirectUri || !baseUri) {
+  if (!clientId || !baseUrl || !fikenRedirectPath || !baseUri) {
     return NextResponse.json(
       { error: "Missing Fiken credentials in .env" },
       { status: 500 }
@@ -25,11 +26,11 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // 2. Create a secure state object containing the shop
-  // We encode this so it can pass through Fiken's OAuth flow safely
+  const redirectUri = baseUrl + fikenRedirectPath;
+  // 2. Create a secure state object
   const statePayload = JSON.stringify({
     shop: shop,
-    nonce: Math.random().toString(36).substring(7), // Security nonce
+    nonce: Math.random().toString(36).substring(7),
   });
   const state = Buffer.from(statePayload).toString("base64");
 
@@ -40,6 +41,6 @@ export async function GET(request: NextRequest) {
   fikenAuthUrl.searchParams.append("response_type", "code");
   fikenAuthUrl.searchParams.append("state", state);
 
-  // 4. Redirect the user to Fiken
+  // 4. Redirect
   return NextResponse.redirect(fikenAuthUrl.toString());
 }

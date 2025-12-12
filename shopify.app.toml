@@ -2,7 +2,7 @@
 
 client_id = "c5bb35435435ad23a3c17db12d4b5b2d"
 name = "Fiken Integration"
-application_url = "https://1e4e30986d16.ngrok-free.app"
+application_url = "https://fiken-shopify-integration.vercel.app"
 embedded = true
 
 [build]
@@ -21,5 +21,5 @@ scopes = "read_customers,read_orders"
 
 [auth]
 redirect_urls = [
-  "https://1e4e30986d16.ngrok-free.app/fiken/api/auth/callback"
+  "https://fiken-shopify-integration.vercel.app//fiken/api/auth/callback"
 ]
