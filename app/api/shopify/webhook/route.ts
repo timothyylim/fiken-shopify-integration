@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getValidTokenForShop } from "@/lib/fiken"; // Ensure this matches your file path
+import { getValidTokenForShop } from "@/lib/fiken";
 import crypto from "crypto";
+import { FIKEN_CONFIG } from "@/app/fiken/lib/constants";
+import { convertToNokMinor } from "@/app/fiken/lib/helpers";
 
 // ---------------------------------------------------------
 // Helper: Verify Webhook HMAC (Security)
@@ -31,7 +33,6 @@ async function getContact(
   companySlug: string,
   shopifyId: string
 ) {
-  // Uses API base URL (api.fiken.no/api/v2)
   const baseUrl = process.env.FIKEN_API_BASE_URL;
 
   const res = await fetch(
@@ -149,8 +150,15 @@ export async function POST(req: NextRequest) {
     }
     const companySlug = shopConfig.companySlug;
 
+    console.log(`Processing order webhook for shop: ${shopDomain}`);
+
     // 6. Process Order Logic
     const order = JSON.parse(rawBody);
+
+    // --- LOG: Raw Shopify Order for Debugging ---
+    console.log("--- SHOPIFY RAW ORDER ---");
+    console.log(JSON.stringify(order, null, 2));
+    console.log("-------------------------");
 
     // Safety check: Ensure customer exists
     if (!order.customer) {
@@ -176,26 +184,120 @@ export async function POST(req: NextRequest) {
     }
 
     const contactId = contact.contactId;
+    console.log(`Using Fiken Contact ID: ${contactId} for order sync.`);
 
     // 8. Create Sales Order (Salgsordre)
     const baseUrl = process.env.FIKEN_API_BASE_URL;
+    const fikenLines = [];
+    const isNok = order.currency === "NOK";
+
+    // 8a. Process Order Line Items
+    for (const item of order.line_items) {
+      // Calculate Line Total (Price * Qty) in minor units (cents/øre)
+      const unitPriceMinor = Math.round(parseFloat(item.price) * 100);
+      const lineTotalMinor = unitPriceMinor * item.quantity;
+
+      // Skip zero-value lines to satisfy Fiken requirements
+      if (lineTotalMinor === 0) continue;
+
+      // Calculate NOK Equivalent (Base Currency)
+      const lineTotalNok = convertToNokMinor(lineTotalMinor, order.currency);
+
+      let lineObject: any = {
+        description: `${item.quantity} x ${item.title}`,
+        netPrice: lineTotalNok, // Base currency (NOK)
+        netPriceInCurrency: lineTotalMinor, // Foreign currency
+        vatType: FIKEN_CONFIG.vatTypes.outside, // Default to Export
+        account: FIKEN_CONFIG.accounts.salesExport, // Default to Export
+      };
+
+      if (isNok) {
+        // --- Domestic (NOK) Logic ---
+        if (item.taxable) {
+          lineObject.vatType = FIKEN_CONFIG.vatTypes.high;
+          lineObject.account = FIKEN_CONFIG.accounts.salesTaxable;
+          // Calculate VAT
+          const vatAmount = Math.round(lineTotalNok * 0.25);
+          lineObject.vat = vatAmount;
+          lineObject.vatInCurrency = vatAmount;
+        } else {
+          lineObject.vatType = FIKEN_CONFIG.vatTypes.none;
+          lineObject.account = FIKEN_CONFIG.accounts.salesExempt;
+        }
+      } else {
+        // --- Foreign (Export) Logic ---
+        // Use "OUTSIDE" to match account 3200.
+        // Important: Do NOT add 'vat' fields here to avoid validation errors.
+        lineObject.vatType = FIKEN_CONFIG.vatTypes.outside;
+        lineObject.account = FIKEN_CONFIG.accounts.salesExport;
+      }
+
+      fikenLines.push(lineObject);
+    }
+
+    // 8b. Process Shipping Lines
+    if (order.shipping_lines) {
+      for (const shipping of order.shipping_lines) {
+        const shippingAmountMinor = Math.round(
+          parseFloat(shipping.price) * 100
+        );
+
+        if (shippingAmountMinor > 0) {
+          const shippingNok = convertToNokMinor(
+            shippingAmountMinor,
+            order.currency
+          );
+
+          let shipObject: any = {
+            description: `Shipping: ${shipping.title}`,
+            netPrice: shippingNok,
+            netPriceInCurrency: shippingAmountMinor,
+            vatType: FIKEN_CONFIG.vatTypes.outside,
+            account: FIKEN_CONFIG.accounts.salesExport,
+          };
+
+          if (isNok) {
+            // Assume taxed if order has tax total > 0
+            if (parseFloat(order.total_tax) > 0) {
+              shipObject.vatType = FIKEN_CONFIG.vatTypes.high;
+              shipObject.account = FIKEN_CONFIG.accounts.salesTaxable;
+              const shipVat = Math.round(shippingNok * 0.25);
+              shipObject.vat = shipVat;
+              shipObject.vatInCurrency = shipVat;
+            } else {
+              shipObject.vatType = FIKEN_CONFIG.vatTypes.none;
+              shipObject.account = FIKEN_CONFIG.accounts.salesExempt;
+            }
+          }
+
+          fikenLines.push(shipObject);
+        }
+      }
+    }
+
+    // 8c. Calculate Final Totals
+    const totalPaidMinor = Math.round(parseFloat(order.total_price) * 100);
+    const totalPaidNok = convertToNokMinor(totalPaidMinor, order.currency);
 
     const salesOrderPayload = {
+      kind: "external_invoice",
       date: order.created_at.split("T")[0], // YYYY-MM-DD
-      customer: { contactId: contactId },
+      customerId: contactId,
+
+      // Total Paid in NOK (Base) - Required for accounting balance
+      totalPaid: totalPaidNok,
+
+      // Total Paid in Foreign Currency
+      totalPaidInCurrency: totalPaidMinor,
+
       currency: order.currency,
-      lines: order.line_items.map((item: any) => ({
-        description: item.title,
-        quantity: item.quantity,
-        unitPrice: parseFloat(item.price),
-        vatType: item.taxable ? "HIGH" : "NONE", // Simple logic: High (25%) or None.
-        // For production, you might need a mapping table for tax codes.
-      })),
-      // Optional: Add shipping line if shipping cost exists
-      // Optional: Add external invoice reference (Shopify Order Name)
+      lines: fikenLines,
       identifier: order.name,
     };
 
+    console.log(`Creating Fiken sales order for Shopify Order: ${order.name}`);
+
+    // 8d. Send to Fiken
     const saleRes = await fetch(`${baseUrl}/companies/${companySlug}/sales`, {
       method: "POST",
       headers: {
@@ -206,10 +308,11 @@ export async function POST(req: NextRequest) {
     });
 
     if (!saleRes.ok) {
-      console.error("Fiken Sales Order Failed:", await saleRes.text());
+      const errorText = await saleRes.text();
+      console.error("Fiken Sales Order Failed:", errorText);
       // Return 200 to stop retry loops, but log the error
       return NextResponse.json(
-        { error: "Failed to create order in Fiken" },
+        { error: "Failed to create order in Fiken", details: errorText },
         { status: 200 }
       );
     }

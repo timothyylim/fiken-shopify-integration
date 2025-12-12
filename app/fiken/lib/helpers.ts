@@ -1,3 +1,5 @@
+import { FIKEN_CONFIG } from "./constants";
+
 export const fetcher = async (url: string, token: string) => {
   if (!token) throw new Error("No token provided");
 
@@ -13,3 +15,14 @@ export const fetcher = async (url: string, token: string) => {
 
   return res.json();
 };
+
+export function convertToNokMinor(
+  amountMinor: number,
+  currency: string
+): number {
+  if (currency === "NOK") return amountMinor;
+
+  const rate =
+    FIKEN_CONFIG.exchangeRates[currency] || FIKEN_CONFIG.exchangeRates.DEFAULT;
+  return Math.round(amountMinor * rate);
+}
